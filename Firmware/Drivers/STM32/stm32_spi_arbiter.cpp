@@ -66,18 +66,23 @@ void Stm32SpiArbiter::transfer_async(SpiTask* task) {
     // Append new task to task list.
     // We could try to do this lock free but we could also use our time for useful things.
     SpiTask** ptr = &task_list_;
+    bool was_empty = false;
     CRITICAL_SECTION() {
         while (*ptr)
             ptr = &(*ptr)->next;
         *ptr = task;
+        was_empty = (ptr == &task_list_);
     }
 
-    // If the list was empty before, kick off the SPI arbiter now
-    if (ptr == &task_list_) {
-        if (!start()) {
-            if (task->on_complete) {
-                (*task->on_complete)(task->on_complete_ctx, false);
-            }
+    // If the list was empty before, kick off the SPI arbiter now. If the DMA
+    // streams are not ready yet, leave the task queued and retry from kick().
+    if (was_empty) {
+        bool started = false;
+        CRITICAL_SECTION() {
+            started = start();
+        }
+        if (!started) {
+            start_pending_ = true;
         }
     }
 }
@@ -124,6 +129,22 @@ void Stm32SpiArbiter::on_complete() {
         next = task_list_ = task_list_->next;
     }
     if (next) {
-        start();
+        bool started = false;
+        CRITICAL_SECTION() {
+            started = start();
+        }
+        if (!started) {
+            start_pending_ = true;
+        }
+    }
+}
+
+void Stm32SpiArbiter::kick() {
+    CRITICAL_SECTION() {
+        if (start_pending_) {
+            if (start()) {
+                start_pending_ = false;
+            }
+        }
     }
 }

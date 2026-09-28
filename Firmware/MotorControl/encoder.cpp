@@ -5,11 +5,30 @@
 
 Encoder::Encoder(TIM_HandleTypeDef* timer, Stm32Gpio index_gpio,
                  Stm32Gpio hallA_gpio, Stm32Gpio hallB_gpio, Stm32Gpio hallC_gpio,
-                 Stm32SpiArbiter* spi_arbiter) :
+                 Stm32SpiArbiter* spi_arbiter, bool load_encoder) :
         timer_(timer), index_gpio_(index_gpio),
         hallA_gpio_(hallA_gpio), hallB_gpio_(hallB_gpio), hallC_gpio_(hallC_gpio),
-        spi_arbiter_(spi_arbiter)
+        spi_arbiter_(spi_arbiter), load_encoder_(load_encoder)
 {
+    clear_config();
+}
+
+void Encoder::clear_config() {
+    config_ = {};
+
+    if (load_encoder_) {
+        // Load-side AS5047P on ENC2_CS / PA3 / GPIO4. This encoder measures the
+        // output shaft and is not used for FOC commutation.
+        config_.mode = MODE_SPI_ABS_AMS;
+        config_.cpr = (1 << 14);
+        config_.direction = 1;
+        config_.phase_offset = 0;
+        config_.phase_offset_float = 0.0f;
+        config_.pre_calibrated = true;
+#ifdef BOARD_CUSTOM
+        config_.abs_spi_cs_gpio_pin = 4;
+#endif
+    }
 }
 
 static void enc_index_cb_wrapper(void* ctx) {
@@ -34,10 +53,17 @@ bool Encoder::apply_config(ODriveIntf::MotorIntf::MotorType motor_type) {
 }
 
 void Encoder::setup() {
-    HAL_TIM_Encoder_Start(timer_, TIM_CHANNEL_ALL);
-    set_idx_subscribe();
-
     mode_ = config_.mode;
+
+    if (mode_ == MODE_INCREMENTAL) {
+        if (timer_ == nullptr) {
+            set_error(ERROR_UNSUPPORTED_ENCODER_MODE);
+            return;
+        }
+        HAL_TIM_Encoder_Start(timer_, TIM_CHANNEL_ALL);
+    }
+
+    set_idx_subscribe();
 
     spi_task_.config = {
         .Mode = SPI_MODE_MASTER,
@@ -46,7 +72,11 @@ void Encoder::setup() {
         .CLKPolarity = (mode_ == MODE_SPI_ABS_AEAT || mode_ == MODE_SPI_ABS_MA732) ? SPI_POLARITY_HIGH : SPI_POLARITY_LOW,
         .CLKPhase = SPI_PHASE_2EDGE,
         .NSS = SPI_NSS_SOFT,
+#ifdef BOARD_CUSTOM
+        .BaudRatePrescaler = SPI_BAUDRATEPRESCALER_64,
+#else
         .BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16,
+#endif
         .FirstBit = SPI_FIRSTBIT_MSB,
         .TIMode = SPI_TIMODE_DISABLE,
         .CRCCalculation = SPI_CRCCALCULATION_DISABLE,
@@ -796,15 +826,18 @@ bool Encoder::update() {
         snap_to_zero_vel = true;
     }
 
-    // Outputs from Encoder for Controller
-    pos_estimate_ = pos_estimate_counts_ / (float)config_.cpr;
-    vel_estimate_ = vel_estimate_counts_ / (float)config_.cpr;
+    // Outputs from Encoder for Controller. The motor-side encoder keeps its
+    // existing behavior; the load-side encoder can be sign-corrected without
+    // changing its raw count diagnostics.
+    float output_sign = load_encoder_ ? (float)config_.direction : 1.0f;
+    pos_estimate_ = output_sign * pos_estimate_counts_ / (float)config_.cpr;
+    vel_estimate_ = output_sign * vel_estimate_counts_ / (float)config_.cpr;
     
     // TODO: we should strictly require that this value is from the previous iteration
     // to avoid spinout scenarios. However that requires a proper way to reset
     // the encoder from error states.
     float pos_circular = pos_circular_.any().value_or(0.0f);
-    pos_circular +=  wrap_pm((pos_cpr_counts_ - pos_cpr_counts_last) / (float)config_.cpr, 1.0f);
+    pos_circular += wrap_pm(output_sign * (pos_cpr_counts_ - pos_cpr_counts_last) / (float)config_.cpr, 1.0f);
     pos_circular = fmodf_pos(pos_circular, axis_->controller_.config_.circular_setpoint_range);
     pos_circular_ = pos_circular;
 

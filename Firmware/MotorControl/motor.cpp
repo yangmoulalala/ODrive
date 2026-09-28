@@ -496,7 +496,12 @@ bool Motor::run_calibration() {
         || config_.motor_type == MOTOR_TYPE_ACIM) {
         if (!measure_phase_resistance(config_.calibration_current, R_calib_max_voltage))
             return false;
+#ifdef BOARD_CUSTOM
+        // Use a low fixed voltage for low-inductance/high-current motors.
+        if (!measure_phase_inductance(0.2f))
+#else
         if (!measure_phase_inductance(R_calib_max_voltage))
+#endif
             return false;
     } else if (config_.motor_type == MOTOR_TYPE_GIMBAL) {
         // no calibration needed

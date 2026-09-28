@@ -41,7 +41,11 @@ bool Drv8301::config(float requested_gain, float* actual_gain) {
     RegisterFile new_config;
 
     new_config.control_register_1 =
+#ifdef BOARD_CUSTOM
+          (24 << 6) // 1.043V VDS threshold; software limit protects normal 10A operation.
+#else
           (21 << 6) // Overcurrent set to approximately 150A at 100degC. This may need tweaking.
+#endif
         | (0b01 << 4) // OCP_MODE: latch shut down
         | (0b0 << 3) // 6x PWM mode
         | (0b0 << 2) // don't reset latched faults
@@ -117,9 +121,20 @@ bool Drv8301::init() {
 }
 
 void Drv8301::do_checks() {
-    if (state_ != kStateUninitialized && !nfault_gpio_.read()) {
+    if (state_ == kStateUninitialized) return;
+#ifdef BOARD_CUSTOM
+    if (!nfault_gpio_.read()) {
+        if (++nfault_low_count_ >= 4) {
+            state_ = kStateUninitialized;
+        }
+    } else {
+        nfault_low_count_ = 0;
+    }
+#else
+    if (!nfault_gpio_.read()) {
         state_ = kStateUninitialized;
     }
+#endif
 }
 
 bool Drv8301::is_ready() {

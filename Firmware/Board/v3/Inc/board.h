@@ -22,13 +22,19 @@
 
 #include <Drivers/STM32/stm32_system.h>
 
-#if HW_VERSION_MINOR <= 3
+#ifdef BOARD_CUSTOM
+#define SHUNT_RESISTANCE (1000e-6f)
+#elif HW_VERSION_MINOR <= 3
 #define SHUNT_RESISTANCE (675e-6f)
 #else
 #define SHUNT_RESISTANCE (500e-6f)
 #endif
 
+#ifdef BOARD_CUSTOM
+#define AXIS_COUNT (1)
+#else
 #define AXIS_COUNT (2)
+#endif
 
 // Total count of GPIOs, including encoder pins, CAN pins and a dummy GPIO0.
 // ODrive v3.4 and earlier don't have GPIOs 6, 7 and 8 but to keep the numbering
@@ -46,6 +52,28 @@
 #define DEFAULT_ERROR_PIN 0
 #define DEFAULT_MIN_DC_VOLTAGE 8.0f
 
+#ifdef BOARD_CUSTOM
+// PA2/PA3 are SPI encoder chip selects and are configured as outputs by the
+// encoder driver. Keep all unexposed GPIOs as plain digital pins.
+#define DEFAULT_GPIO_MODES \
+    ODriveIntf::GPIO_MODE_DIGITAL, \
+    ODriveIntf::GPIO_MODE_UART_A, \
+    ODriveIntf::GPIO_MODE_UART_A, \
+    ODriveIntf::GPIO_MODE_DIGITAL, \
+    ODriveIntf::GPIO_MODE_DIGITAL, \
+    ODriveIntf::GPIO_MODE_DIGITAL, \
+    ODriveIntf::GPIO_MODE_DIGITAL, \
+    ODriveIntf::GPIO_MODE_DIGITAL, \
+    ODriveIntf::GPIO_MODE_DIGITAL, \
+    ODriveIntf::GPIO_MODE_DIGITAL, \
+    ODriveIntf::GPIO_MODE_DIGITAL, \
+    ODriveIntf::GPIO_MODE_DIGITAL, \
+    ODriveIntf::GPIO_MODE_DIGITAL, \
+    ODriveIntf::GPIO_MODE_DIGITAL, \
+    ODriveIntf::GPIO_MODE_DIGITAL, \
+    ODriveIntf::GPIO_MODE_CAN_A, \
+    ODriveIntf::GPIO_MODE_CAN_A,
+#else
 #define DEFAULT_GPIO_MODES \
     ODriveIntf::GPIO_MODE_DIGITAL, \
     ODriveIntf::GPIO_MODE_UART_A, \
@@ -64,6 +92,7 @@
     ODriveIntf::GPIO_MODE_DIGITAL_PULL_DOWN, \
     ODriveIntf::GPIO_MODE_CAN_A, \
     ODriveIntf::GPIO_MODE_CAN_A,
+#endif
 
 #define TIM_TIME_BASE TIM14
 

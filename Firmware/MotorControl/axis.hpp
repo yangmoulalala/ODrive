@@ -174,6 +174,7 @@ public:
     Config_t config_;
 
     Encoder& encoder_;
+    Encoder load_encoder_;
     AcimEstimator acim_estimator_;
     SensorlessEstimator& sensorless_estimator_;
     Controller& controller_;

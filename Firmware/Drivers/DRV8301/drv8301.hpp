@@ -133,6 +133,7 @@ private:
     // We don't put these buffers on the stack because we place the stack in
     // a RAM section which cannot be used by DMA.
     uint16_t tx_buf_, rx_buf_;
+    uint8_t nfault_low_count_ = 0;
 
     enum {
         kStateUninitialized,

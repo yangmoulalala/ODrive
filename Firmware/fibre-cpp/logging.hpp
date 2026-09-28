@@ -330,8 +330,13 @@ static inline std::ostream& operator<<(std::ostream& stream, const sys_err&) {
 #define DEFINE_LOG_TOPIC(topic)
 #define USE_LOG_TOPIC(topic)
 
+namespace fibre {
+template<typename T> struct HexArrayPrinter;
+}
+
 struct NullStream {
     template<typename T> NullStream& operator<<(T val) { return *this; }
+    template<typename T> NullStream& operator<<(const fibre::HexArrayPrinter<T>&) { return *this; }
 };
 
 #define FIBRE_LOG(level) NullStream()

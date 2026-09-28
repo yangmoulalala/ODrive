@@ -24,6 +24,13 @@ Axis::Axis(int axis_num,
       default_dir_gpio_pin_(default_dir_gpio_pin),
       thread_priority_(thread_priority),
       encoder_(encoder),
+      load_encoder_(
+#ifdef BOARD_CUSTOM
+          &htim4,
+#else
+          nullptr,
+#endif
+          {}, {}, {}, {}, &ext_spi_arbiter, true),
       sensorless_estimator_(sensorless_estimator),
       controller_(controller),
       motor_(motor),
@@ -33,6 +40,7 @@ Axis::Axis(int axis_num,
       mechanical_brake_(mechanical_brake)
 {
     encoder_.axis_ = this;
+    load_encoder_.axis_ = this;
     sensorless_estimator_.axis_ = this;
     controller_.axis_ = this;
     motor_.axis_ = this;
@@ -201,6 +209,7 @@ bool Axis::run_lockin_spin(const LockinConfig_t &lockin_config, bool remain_arme
         motor_.current_control_.enable_current_control_src_ = motor_.config_.motor_type != Motor::MOTOR_TYPE_GIMBAL;
         motor_.current_control_.Idq_setpoint_src_.connect_to(&open_loop_controller_.Idq_setpoint_);
         motor_.current_control_.Vdq_setpoint_src_.connect_to(&open_loop_controller_.Vdq_setpoint_);
+        motor_.torque_setpoint_src_.connect_to(&open_loop_controller_.torque_setpoint_);
 
         motor_.current_control_.phase_src_.connect_to(&open_loop_controller_.phase_);
         acim_estimator_.rotor_phase_src_.connect_to(&open_loop_controller_.phase_);
@@ -271,6 +280,16 @@ bool Axis::start_closed_loop_control() {
             controller_.pos_estimate_circular_src_.disconnect();
             controller_.pos_wrap_src_.disconnect();
             controller_.vel_estimate_src_.connect_to(&sensorless_estimator_.vel_estimate_);
+#ifdef BOARD_CUSTOM
+        } else {
+            // FOC still uses the motor-side AS5047P, but position/velocity
+            // control is closed on the output-shaft AS5047P.
+            controller_.pos_estimate_circular_src_.connect_to(&load_encoder_.pos_circular_);
+            controller_.pos_wrap_src_.connect_to(&controller_.config_.circular_setpoint_range);
+            controller_.pos_estimate_linear_src_.connect_to(&load_encoder_.pos_estimate_);
+            controller_.vel_estimate_src_.connect_to(&load_encoder_.vel_estimate_);
+        }
+#else
         } else if (controller_.config_.load_encoder_axis < AXIS_COUNT) {
             Axis* ax = &axes[controller_.config_.load_encoder_axis];
             controller_.pos_estimate_circular_src_.connect_to(&ax->encoder_.pos_circular_);
@@ -285,6 +304,7 @@ bool Axis::start_closed_loop_control() {
             controller_.set_error(Controller::ERROR_INVALID_LOAD_ENCODER);
             return false;
         }
+#endif
 
         // To avoid any transient on startup, we intialize the setpoint to be the current position
         controller_.control_mode_updated();
@@ -391,7 +411,15 @@ bool Axis::run_homing() {
 
     error_ &= ~ERROR_MIN_ENDSTOP_PRESSED; // clear this error since we deliberately drove into the endstop
 
-    std::optional<float> pos_estimate_local = encoder_.pos_estimate_.any();
+#ifdef BOARD_CUSTOM
+    Encoder& position_encoder = load_encoder_;
+#else
+    const auto load_encoder_axis = controller_.config_.load_encoder_axis;
+    Encoder& position_encoder = (load_encoder_axis < AXIS_COUNT)
+        ? axes[load_encoder_axis].encoder_ : encoder_;
+#endif
+
+    std::optional<float> pos_estimate_local = position_encoder.pos_estimate_.any();
     if (pos_estimate_local == std::nullopt || !pos_estimate_local.has_value()){
         return error_ |= ERROR_UNKNOWN_POSITION, false;
     }
@@ -422,10 +450,9 @@ bool Axis::run_homing() {
     }
 
     // Set the current position to 0, the target to zero, and make sure we're path planning from 0 to 0
-    encoder_.set_linear_count(0); 
-    const auto load_encoder_axis = controller_.config_.load_encoder_axis;
-    if(load_encoder_axis != axis_num_ && load_encoder_axis < AXIS_COUNT) {
-        axes[load_encoder_axis].encoder_.set_linear_count(0);
+    encoder_.set_linear_count(0);
+    if (&position_encoder != &encoder_) {
+        position_encoder.set_linear_count(0);
     }
     controller_.input_pos_ = 0.0f;
     controller_.pos_setpoint_ = 0.0f;

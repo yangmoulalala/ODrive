@@ -27,6 +27,7 @@ public:
     OutputPort<float> phase_ = 0.0f;
     OutputPort<float> phase_vel_ = 0.0f;
     OutputPort<float> total_distance_ = 0.0f;
+    OutputPort<float> torque_setpoint_ = 0.0f;
 };
 
 #endif // __OPEN_LOOP_CONTROLLER_HPP

@@ -17,22 +17,43 @@ public:
         {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
 
     struct Config_t {
+#ifdef BOARD_CUSTOM
+        Mode mode = MODE_SPI_ABS_AMS; // Onboard AS5047P (U6)
+#else
         Mode mode = MODE_INCREMENTAL;
+#endif
         float calib_range = 0.02f; // Accuracy required to pass encoder cpr check
         float calib_scan_distance = 16.0f * M_PI; // rad electrical
         float calib_scan_omega = 4.0f * M_PI; // rad/s electrical
         float bandwidth = 1000.0f;
+#ifdef BOARD_CUSTOM
+        int32_t phase_offset = 196;
+        float phase_offset_float = 1.44740248f;
+#else
         int32_t phase_offset = 0;        // Offset between encoder count and rotor electrical phase
         float phase_offset_float = 0.0f; // Sub-count phase alignment offset
+#endif
+#ifdef BOARD_CUSTOM
+        int32_t cpr = (1 << 14);    // AS5047P: 14-bit absolute encoder
+#else
         int32_t cpr = (2048 * 4);   // Default resolution of CUI-AMT102 encoder,
+#endif
         float index_offset = 0.0f;
         bool use_index = false;
-        bool pre_calibrated = false; // If true, this means the offset stored in
+#ifdef BOARD_CUSTOM
+        bool pre_calibrated = true;
+#else
+        bool pre_calibrated = false; // If true, this means that the offset stored in
+#endif
                                     // configuration is valid and does not need
                                     // be determined by run_offset_calibration.
                                     // In this case the encoder will enter ready
                                     // state as soon as the index is found.
+#ifdef BOARD_CUSTOM
+        int32_t direction = -1;
+#else
         int32_t direction = 0; // direction with respect to motor
+#endif
         bool use_index_offset = true;
         bool enable_phase_interpolation = true; // Use velocity to interpolate inside the count state
         bool find_idx_on_lockin_only = false; // Only be sensitive during lockin scan constant vel state
@@ -40,7 +61,11 @@ public:
         uint8_t hall_polarity = 0;
         bool hall_polarity_calibrated = false;
         std::array<float, 6> hall_edge_phcnt = hall_edge_defaults;
+#ifdef BOARD_CUSTOM
+        uint16_t abs_spi_cs_gpio_pin = 3;
+#else
         uint16_t abs_spi_cs_gpio_pin = 1;
+#endif
         uint16_t sincos_gpio_pin_sin = 3;
         uint16_t sincos_gpio_pin_cos = 4;
 
@@ -56,8 +81,9 @@ public:
 
     Encoder(TIM_HandleTypeDef* timer, Stm32Gpio index_gpio,
             Stm32Gpio hallA_gpio, Stm32Gpio hallB_gpio, Stm32Gpio hallC_gpio,
-            Stm32SpiArbiter* spi_arbiter);
-    
+            Stm32SpiArbiter* spi_arbiter, bool load_encoder = false);
+
+    void clear_config();
     bool apply_config(ODriveIntf::MotorIntf::MotorType motor_type);
     void setup();
     void set_error(Error error);
@@ -90,6 +116,7 @@ public:
     Stm32Gpio hallC_gpio_;
     Stm32SpiArbiter* spi_arbiter_;
     Axis* axis_ = nullptr; // set by Axis constructor
+    bool load_encoder_ = false;
 
     Config_t config_;
 

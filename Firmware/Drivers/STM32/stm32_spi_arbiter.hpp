@@ -84,11 +84,18 @@ public:
      */
     void on_complete();
 
+    /**
+     * @brief Retries a transfer that could not start from the previous DMA
+     * completion callback because the TX DMA stream was still busy.
+     */
+    void kick();
+
 private:
     bool start();
     
     SPI_HandleTypeDef* hspi_;
     SpiTask* task_list_ = nullptr;
+    volatile bool start_pending_ = false;
 };
 
 #endif // __STM32_SPI_ARBITER_HPP

@@ -15,21 +15,54 @@ public:
     // example: vel_gain is [V/(turn/s)] instead of [Nm/(turn/s)]
     // example: current_lim and calibration_current will instead determine the maximum voltage applied to the motor.
     struct Config_t {
+#ifdef BOARD_CUSTOM
+        bool pre_calibrated = true;
+#else
         bool pre_calibrated = false; // can be set to true to indicate that all values here are valid
+#endif
+#ifdef BOARD_CUSTOM
+        int32_t pole_pairs = 21;
+#else
         int32_t pole_pairs = 7;
+#endif
+#ifdef BOARD_CUSTOM
+        float calibration_current = 1.0f;     // [A] conservative first calibration
+#else
         float calibration_current = 10.0f;    // [A]
+#endif
+#ifdef BOARD_CUSTOM
+        float resistance_calib_max_voltage = 1.0f; // [V] conservative first calibration
+#else
         float resistance_calib_max_voltage = 2.0f; // [V] - You may need to increase this if this voltage isn't sufficient to drive calibration_current through the motor.
+#endif
+#ifdef BOARD_CUSTOM
+        float phase_inductance = 0.0001f;     // estimated fallback
+#else
         float phase_inductance = 0.0f;        // to be set by measure_phase_inductance
+#endif
+#ifdef BOARD_CUSTOM
+        float phase_resistance = 0.0825f;     // measured phase resistance
+#else
         float phase_resistance = 0.0f;        // to be set by measure_phase_resistance
+#endif
         float torque_constant = 0.04f;         // [Nm/A] for PM motors, [Nm/A^2] for induction motors. Equal to 8.27/Kv of the motor
         MotorType motor_type = MOTOR_TYPE_HIGH_CURRENT;
         // Read out max_allowed_current to see max supported value for current_lim.
         // float current_lim = 70.0f; //[A]
+#ifdef BOARD_CUSTOM
+        float current_lim = 10.0f;          //[A]
+        float current_lim_margin = 2.0f;    // Maximum violation of current_lim
+#else
         float current_lim = 10.0f;          //[A]
         float current_lim_margin = 8.0f;    // Maximum violation of current_lim
+#endif
         float torque_lim = std::numeric_limits<float>::infinity();           //[Nm]. 
         // Value used to compute shunt amplifier gains
+#ifdef BOARD_CUSTOM
+        float requested_current_range = 120.0f; // [A] force 10V/V gain
+#else
         float requested_current_range = 60.0f; // [A]
+#endif
         float current_control_bandwidth = 1000.0f;  // [rad/s]
         float inverter_temp_limit_lower = 100;
         float inverter_temp_limit_upper = 120;

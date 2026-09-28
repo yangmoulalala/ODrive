@@ -27,4 +27,5 @@ void OpenLoopController::update(uint32_t timestamp) {
     phase_ = wrap_pm_pi(phase + phase_vel * dt);
     total_distance_ = total_distance_.previous().value_or(0.0f) + phase_vel * dt;
     timestamp_ = timestamp;
+    torque_setpoint_ = 0.0f;
 }

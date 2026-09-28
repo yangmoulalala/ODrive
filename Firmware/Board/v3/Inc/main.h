@@ -68,7 +68,11 @@
 /* Private define ------------------------------------------------------------*/
 #define TIM_1_8_CLOCK_HZ 168000000
 #define TIM_1_8_PERIOD_CLOCKS 3500
+#ifdef BOARD_CUSTOM
+#define TIM_1_8_DEADTIME_CLOCKS 40
+#else
 #define TIM_1_8_DEADTIME_CLOCKS 20
+#endif
 #define TIM_APB1_CLOCK_HZ 84000000
 #define TIM_APB1_PERIOD_CLOCKS 4096
 #define TIM_APB1_DEADTIME_CLOCKS 40

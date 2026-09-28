@@ -43,23 +43,35 @@ Drv8301 m0_gate_driver{
     {nFAULT_GPIO_Port, nFAULT_Pin} // nFAULT pin (shared between both motors)
 };
 
+#if !defined(BOARD_CUSTOM)
 Drv8301 m1_gate_driver{
     &spi3_arbiter,
     {M1_nCS_GPIO_Port, M1_nCS_Pin}, // nCS
     {}, // EN pin (shared between both motors, therefore we actuate it outside of the drv8301 driver)
     {nFAULT_GPIO_Port, nFAULT_Pin} // nFAULT pin (shared between both motors)
 };
+#endif
 
+#ifdef BOARD_CUSTOM
+// KTY84-130, 10 kOhm pull-up to 3.3 V, sensor connected to ground.
+// x = ADC_voltage / 3.3 V = R_KTY / (10000 + R_KTY)
+// Fitted over the useful KTY84 temperature range; coeffs[0] is the highest order.
+const float fet_thermistor_poly_coeffs[] =
+    {-1018644.75f, 393493.3125f, -61259.6914f, 6423.13428f, -203.793777f};
+#else
 const float fet_thermistor_poly_coeffs[] =
     {363.93910201f, -462.15369634f, 307.55129571f, -27.72569531f};
+#endif
 const size_t fet_thermistor_num_coeffs = sizeof(fet_thermistor_poly_coeffs)/sizeof(fet_thermistor_poly_coeffs[1]);
 
 OnboardThermistorCurrentLimiter fet_thermistors[AXIS_COUNT] = {
     {
-        15, // adc_channel
+        15, // adc_channel (PC5 / CN2)
         &fet_thermistor_poly_coeffs[0], // coefficients
         fet_thermistor_num_coeffs // num_coeffs
-    }, {
+    }
+#if !defined(BOARD_CUSTOM)
+    , {
 #if HW_VERSION_MAJOR == 3 && HW_VERSION_MINOR >= 3
         4, // adc_channel
 #else
@@ -68,6 +80,7 @@ OnboardThermistorCurrentLimiter fet_thermistors[AXIS_COUNT] = {
         &fet_thermistor_poly_coeffs[0], // coefficients
         fet_thermistor_num_coeffs // num_coeffs
     }
+#endif
 };
 
 OffboardThermistorCurrentLimiter motor_thermistors[AXIS_COUNT];
@@ -82,7 +95,8 @@ Motor motors[AXIS_COUNT] = {
         fet_thermistors[0],
         motor_thermistors[0]
     },
-    {
+#if !defined(BOARD_CUSTOM)
+    , {
         &htim8, // timer
         0b110, // current_sensor_mask
         1.0f / SHUNT_RESISTANCE, // shunt_conductance [S]
@@ -91,6 +105,7 @@ Motor motors[AXIS_COUNT] = {
         fet_thermistors[1],
         motor_thermistors[1]
     }
+#endif
 };
 
 Encoder encoders[AXIS_COUNT] = {
@@ -102,7 +117,8 @@ Encoder encoders[AXIS_COUNT] = {
         {M0_ENC_Z_GPIO_Port, M0_ENC_Z_Pin}, // hallC_gpio
         &spi3_arbiter // spi_arbiter
     },
-    {
+#if !defined(BOARD_CUSTOM)
+    , {
         &htim4, // timer
         {M1_ENC_Z_GPIO_Port, M1_ENC_Z_Pin}, // index_gpio
         {M1_ENC_A_GPIO_Port, M1_ENC_A_Pin}, // hallA_gpio
@@ -110,6 +126,7 @@ Encoder encoders[AXIS_COUNT] = {
         {M1_ENC_Z_GPIO_Port, M1_ENC_Z_Pin}, // hallC_gpio
         &spi3_arbiter // spi_arbiter
     }
+#endif
 };
 
 // TODO: this has no hardware dependency and should be allocated depending on config
@@ -134,7 +151,8 @@ std::array<Axis, AXIS_COUNT> axes{{
         endstops[0], endstops[1], // min_endstop, max_endstop
         mechanical_brakes[0], // mechanical brake
     },
-    {
+#if !defined(BOARD_CUSTOM)
+    , {
         1, // axis_num
 #if HW_VERSION_MAJOR == 3 && HW_VERSION_MINOR >= 5
         7, // step_gpio_pin
@@ -151,7 +169,8 @@ std::array<Axis, AXIS_COUNT> axes{{
         trap[1], // trap
         endstops[2], endstops[3], // min_endstop, max_endstop
         mechanical_brakes[1], // mechanical brake
-    },
+    }
+#endif
 }};
 
 
@@ -435,6 +454,7 @@ static bool fetch_and_reset_adcs(
         }
     }
 
+#if !defined(BOARD_CUSTOM)
     if (m1_gate_driver.is_ready()) {
         std::optional<float> phB = motors[1].phase_current_from_adcval(ADC2->DR);
         std::optional<float> phC = motors[1].phase_current_from_adcval(ADC3->DR);
@@ -442,6 +462,7 @@ static bool fetch_and_reset_adcs(
             *current1 = {-*phB - *phC, *phB, *phC};
         }
     }
+#endif
     
     ADC1->SR = ~(ADC_SR_JEOC);
     ADC2->SR = ~(ADC_SR_EOC | ADC_SR_JEOC | ADC_SR_OVR);
@@ -488,7 +509,9 @@ void TIM8_UP_TIM13_IRQHandler(void) {
     bool timer_update_missed = (counting_down_ == counting_down);
     if (timer_update_missed) {
         motors[0].disarm_with_error(Motor::ERROR_TIMER_UPDATE_MISSED);
+#if !defined(BOARD_CUSTOM)
         motors[1].disarm_with_error(Motor::ERROR_TIMER_UPDATE_MISSED);
+#endif
         return;
     }
     counting_down_ = counting_down;
@@ -519,13 +542,16 @@ void ControlLoop_IRQHandler(void) {
     COUNT_IRQ(ControlLoop_IRQn);
     uint32_t timestamp = timestamp_;
 
-    // Ensure that all the ADCs are done
+    // Ensure that all the ADCs are done. ADC2/ADC3 regular conversions remain
+    // enabled because TIM8 is retained as the control-loop timebase.
     std::optional<Iph_ABC_t> current0;
     std::optional<Iph_ABC_t> current1;
 
     if (!fetch_and_reset_adcs(&current0, &current1)) {
         motors[0].disarm_with_error(Motor::ERROR_BAD_TIMING);
+#if !defined(BOARD_CUSTOM)
         motors[1].disarm_with_error(Motor::ERROR_BAD_TIMING);
+#endif
     }
 
     // If the motor FETs are not switching then we can't measure the current
@@ -541,7 +567,9 @@ void ControlLoop_IRQHandler(void) {
     }
 
     motors[0].current_meas_cb(timestamp - TIM1_INIT_COUNT, current0);
+#if !defined(BOARD_CUSTOM)
     motors[1].current_meas_cb(timestamp, current1);
+#endif
 
     odrv.control_loop_cb(timestamp);
 
@@ -553,21 +581,29 @@ void ControlLoop_IRQHandler(void) {
 
     if (!fetch_and_reset_adcs(&current0, &current1)) {
         motors[0].disarm_with_error(Motor::ERROR_BAD_TIMING);
+#if !defined(BOARD_CUSTOM)
         motors[1].disarm_with_error(Motor::ERROR_BAD_TIMING);
+#endif
     }
 
     motors[0].dc_calib_cb(timestamp + TIM_1_8_PERIOD_CLOCKS * (TIM_1_8_RCR + 1) - TIM1_INIT_COUNT, current0);
+#if !defined(BOARD_CUSTOM)
     motors[1].dc_calib_cb(timestamp + TIM_1_8_PERIOD_CLOCKS * (TIM_1_8_RCR + 1), current1);
+#endif
 
     motors[0].pwm_update_cb(timestamp + 3 * TIM_1_8_PERIOD_CLOCKS * (TIM_1_8_RCR + 1) - TIM1_INIT_COUNT);
+#if !defined(BOARD_CUSTOM)
     motors[1].pwm_update_cb(timestamp + 3 * TIM_1_8_PERIOD_CLOCKS * (TIM_1_8_RCR + 1));
+#endif
 
     // If we did everything right, the TIM8 update handler should have been
     // called exactly once between the start of this function and now.
 
     if (timestamp_ != timestamp + TIM_1_8_PERIOD_CLOCKS * (TIM_1_8_RCR + 1)) {
         motors[0].disarm_with_error(Motor::ERROR_CONTROL_DEADLINE_MISSED);
+#if !defined(BOARD_CUSTOM)
         motors[1].disarm_with_error(Motor::ERROR_CONTROL_DEADLINE_MISSED);
+#endif
     }
 
     odrv.task_timers_armed_ = odrv.task_timers_armed_ && !TaskTimer::enabled;

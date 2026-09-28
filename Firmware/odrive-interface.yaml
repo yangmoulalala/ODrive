@@ -542,6 +542,7 @@ interfaces:
       motor: Motor
       controller: Controller
       encoder: Encoder
+      load_encoder: Encoder
       acim_estimator: AcimEstimator
       sensorless_estimator: SensorlessEstimator
       trap_traj: TrapezoidalTrajectory

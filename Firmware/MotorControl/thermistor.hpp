@@ -37,7 +37,11 @@ public:
     struct Config_t {
         float temp_limit_lower = 100;
         float temp_limit_upper = 120;
+#ifdef BOARD_CUSTOM
+        bool enabled = true; // TEMP_MOTOR / PC5 is fitted with a KTY84-130
+#else
         bool enabled = true;
+#endif
     };
 
     virtual ~OnboardThermistorCurrentLimiter() = default;
@@ -53,7 +57,9 @@ public:
     struct Config_t {
         float thermistor_poly_coeffs[num_coeffs_];
 
-#if HW_VERSION_MAJOR == 3
+#ifdef BOARD_CUSTOM
+        uint16_t gpio_pin = 5;
+#elif HW_VERSION_MAJOR == 3
         uint16_t gpio_pin = 4;
 #elif HW_VERSION_MAJOR == 4
         uint16_t gpio_pin = 2;

@@ -66,3 +66,6 @@ GUI/build
 
 docs/reStructuredText/_build/
 tools/odrive-cansimple.ini
+# Local firmware backup and OpenOCD diagnostics
+mine/*.bin
+openocd-*.err
